@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 interface Message {
     role: "user" | "model";
-    parts: string;
+    parts: any; // Store full parts structure to preserve thought signatures
     images?: { mimeType: string; data: string }[];
 }
 
@@ -48,17 +48,15 @@ export default function NanobananaPage() {
 
         const userMessage = input.trim();
         setInput("");
-        setMessages((prev) => [...prev, { role: "user", parts: userMessage }]);
+        setMessages((prev) => [...prev, { role: "user", parts: [{ text: userMessage }] }]);
         setIsLoading(true);
 
         try {
             // Convert messages to Gemini format for history
-            // Note: We only send text parts for history context to keep it simple for now,
-            // as the model primarily uses text context to generate new images.
-            // If the model supports image inputs in history for refinement, we would include them.
+            // Preserve the full parts structure to maintain thought signatures
             const history = messages.map(m => ({
                 role: m.role,
-                parts: [{ text: m.parts }]
+                parts: m.parts
             }));
 
             const response = await fetch("/api/nanobanana", {
@@ -78,21 +76,19 @@ export default function NanobananaPage() {
                 throw new Error(data.error || "Failed to generate image");
             }
 
-            // Check for images in the response
-            const generatedImages = data.candidates?.[0]?.content?.parts
-                ?.filter((part: any) => part.inlineData)
-                ?.map((part: any) => part.inlineData) || [];
+            // Store the full parts array to preserve thought signatures
+            const responseParts = data.candidates?.[0]?.content?.parts || [];
 
-            const textResponse = data.candidates?.[0]?.content?.parts
-                ?.filter((part: any) => part.text)
-                ?.map((part: any) => part.text)
-                ?.join("\n") || (generatedImages.length > 0 ? "Image generated successfully." : "No content returned.");
+            // Extract images for display
+            const generatedImages = responseParts
+                .filter((part: any) => part.inlineData)
+                .map((part: any) => part.inlineData);
 
             setMessages((prev) => [
                 ...prev,
                 {
                     role: "model",
-                    parts: textResponse,
+                    parts: responseParts,
                     images: generatedImages.length > 0 ? generatedImages : undefined
                 }
             ]);
@@ -168,7 +164,13 @@ export default function NanobananaPage() {
                                                 : "bg-secondary text-secondary-foreground rounded-tl-none"
                                         )}
                                     >
-                                        {msg.parts}
+                                        {Array.isArray(msg.parts)
+                                            ? msg.parts
+                                                .filter((part: any) => part.text)
+                                                .map((part: any) => part.text)
+                                                .join("\n") || (msg.images?.length ? "Image generated successfully." : "")
+                                            : msg.parts
+                                        }
                                     </div>
 
                                     {/* Render Images if present */}
