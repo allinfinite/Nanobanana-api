@@ -17,6 +17,7 @@ interface Message {
 export default function NanobananaPage() {
     const [apiKey, setApiKey] = useState("");
     const [input, setInput] = useState("");
+    const [aspectRatio, setAspectRatio] = useState("1:1");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -67,6 +68,7 @@ export default function NanobananaPage() {
                     message: userMessage,
                     history,
                     apiKey,
+                    aspectRatio,
                 }),
             });
 
@@ -208,7 +210,24 @@ export default function NanobananaPage() {
                     </div>
 
                     {/* Input Area */}
-                    <div className="p-4 bg-black/20 border-t border-white/5">
+                    <div className="p-4 bg-black/20 border-t border-white/5 flex flex-col gap-2">
+                        <div className="flex gap-2 justify-center">
+                            {["1:1", "16:9", "9:16", "4:3", "3:4"].map((ratio) => (
+                                <Button
+                                    key={ratio}
+                                    type="button"
+                                    variant={aspectRatio === ratio ? "secondary" : "ghost"}
+                                    size="sm"
+                                    onClick={() => setAspectRatio(ratio)}
+                                    className={cn(
+                                        "text-xs h-7",
+                                        aspectRatio === ratio ? "bg-accent text-white" : "text-muted-foreground hover:text-white"
+                                    )}
+                                >
+                                    {ratio}
+                                </Button>
+                            ))}
+                        </div>
                         <form onSubmit={handleSubmit} className="flex gap-2">
                             <Input
                                 value={input}

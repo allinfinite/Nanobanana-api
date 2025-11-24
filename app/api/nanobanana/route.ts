@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { message, history, apiKey: userApiKey } = await req.json();
+        const { message, history, apiKey: userApiKey, aspectRatio } = await req.json();
 
         const apiKey = userApiKey || process.env.GEMINI_API_SECRET;
 
@@ -22,7 +22,13 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
+        const model = genAI.getGenerativeModel({
+            model: "gemini-3-pro-image-preview",
+            generationConfig: {
+                // @ts-ignore - aspectRatio might not be in the types yet for this preview model
+                aspectRatio: aspectRatio || "1:1"
+            }
+        });
 
         const chat = model.startChat({
             history: history || [],
