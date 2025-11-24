@@ -18,8 +18,31 @@ export async function POST(req: Request) {
         const genAI = new GoogleGenerativeAI(apiKey);
         const genModel = genAI.getGenerativeModel({ model });
 
+        // Validate and normalize history format
+        const normalizedHistory = (history || []).map((item: any) => {
+            // Ensure parts is an array
+            let parts = item.parts;
+            if (!Array.isArray(parts)) {
+                parts = [{ text: String(parts || "") }];
+            }
+            
+            // For model messages, filter out inlineData (not allowed by API)
+            if (item.role === "model") {
+                parts = parts.filter((part: any) => part.text && !part.inlineData);
+                // Ensure at least one text part exists
+                if (parts.length === 0) {
+                    parts = [{ text: "" }];
+                }
+            }
+            
+            return {
+                role: item.role,
+                parts: parts
+            };
+        });
+
         const chat = genModel.startChat({
-            history: history || [],
+            history: normalizedHistory,
             generationConfig: {
                 maxOutputTokens: 1000,
             },

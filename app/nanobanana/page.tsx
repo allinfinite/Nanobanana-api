@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Header } from "@/components/Header";
-import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download, Paperclip, X } from "lucide-react";
+import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download, Paperclip, X, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -78,6 +78,105 @@ export default function NanobananaPage() {
         setUploadedImages((prev) => prev.filter((_, i) => i !== index));
     };
 
+    const handleRegenerate = async () => {
+        if (messages.length < 2) return; // Need at least one user message and one model response
+
+        // Find the last user message
+        let lastUserMessage: Message | null = null;
+        for (let i = messages.length - 1; i >= 0; i--) {
+            if (messages[i].role === "user") {
+                lastUserMessage = messages[i];
+                break;
+            }
+        }
+
+        if (!lastUserMessage) return;
+
+        // Remove the last model response
+        setMessages((prev) => {
+            const newMessages = [...prev];
+            // Remove last message if it's from model
+            if (newMessages[newMessages.length - 1].role === "model") {
+                newMessages.pop();
+            }
+            return newMessages;
+        });
+
+        setIsLoading(true);
+
+        try {
+            // Get history without the last model response
+            // Filter out inlineData from model messages (not allowed by API)
+            const history = messages.slice(0, -1).map(m => {
+                let parts = m.parts;
+                
+                // Ensure parts is an array
+                if (!Array.isArray(parts)) {
+                    parts = [{ text: parts }];
+                }
+                
+                // For model messages, filter out inlineData parts (only keep text parts)
+                if (m.role === "model") {
+                    parts = parts.filter((part: any) => part.text && !part.inlineData);
+                    // If no text parts remain, create a placeholder text part
+                    if (parts.length === 0) {
+                        parts = [{ text: "Image generated successfully." }];
+                    }
+                }
+                
+                return {
+                    role: m.role,
+                    parts: parts
+                };
+            });
+
+            // Extract text from last user message
+            const textParts = Array.isArray(lastUserMessage.parts)
+                ? lastUserMessage.parts.filter((part: any) => part.text)
+                : [];
+            const userMessage = textParts.length > 0 ? textParts[0].text : "";
+
+            const response = await fetch("/api/nanobanana", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    message: userMessage,
+                    history,
+                    apiKey,
+                    aspectRatio,
+                }),
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || "Failed to generate image");
+            }
+
+            const responseParts = data.candidates?.[0]?.content?.parts || [];
+            const generatedImages = responseParts
+                .filter((part: any) => part.inlineData)
+                .map((part: any) => part.inlineData);
+
+            setMessages((prev) => [
+                ...prev,
+                {
+                    role: "model",
+                    parts: responseParts,
+                    images: generatedImages.length > 0 ? generatedImages : undefined
+                }
+            ]);
+
+        } catch (error: any) {
+            setMessages((prev) => [
+                ...prev,
+                { role: "model", parts: `Error: ${error.message}` },
+            ]);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() && uploadedImages.length === 0) return;
@@ -107,11 +206,29 @@ export default function NanobananaPage() {
 
         try {
             // Convert messages to Gemini format for history
-            // Preserve the full parts structure to maintain thought signatures
-            const history = messages.map(m => ({
-                role: m.role,
-                parts: m.parts
-            }));
+            // Filter out inlineData from model messages (not allowed by API)
+            const history = messages.map(m => {
+                let parts = m.parts;
+                
+                // Ensure parts is an array
+                if (!Array.isArray(parts)) {
+                    parts = [{ text: parts }];
+                }
+                
+                // For model messages, filter out inlineData parts (only keep text parts)
+                if (m.role === "model") {
+                    parts = parts.filter((part: any) => part.text && !part.inlineData);
+                    // If no text parts remain, create a placeholder text part
+                    if (parts.length === 0) {
+                        parts = [{ text: "Image generated successfully." }];
+                    }
+                }
+                
+                return {
+                    role: m.role,
+                    parts: parts
+                };
+            });
 
             const response = await fetch("/api/nanobanana", {
                 method: "POST",
@@ -250,6 +367,17 @@ export default function NanobananaPage() {
                                                 >
                                                     <Download className="mr-2 h-4 w-4" /> Download
                                                 </Button>
+                                                {/* Show regenerate button only on last model message */}
+                                                {msg.role === "model" && index === messages.length - 1 && (
+                                                    <Button
+                                                        variant="secondary"
+                                                        size="sm"
+                                                        onClick={handleRegenerate}
+                                                        disabled={isLoading}
+                                                    >
+                                                        <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+                                                    </Button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
