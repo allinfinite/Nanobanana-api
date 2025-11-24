@@ -372,39 +372,42 @@ export default function NanobananaPage() {
 
                                     {/* Render Images if present */}
                                     {msg.images && msg.images.map((img, imgIndex) => (
-                                        <div key={imgIndex} className="relative group mt-2">
-                                            <img
-                                                src={`data:${img.mimeType};base64,${img.data}`}
-                                                alt="Generated Art"
-                                                className="max-w-full rounded-lg shadow-lg border border-white/10"
-                                            />
-                                            <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
-                                                <Button
-                                                    variant="secondary"
-                                                    size="sm"
-                                                    onClick={() => {
-                                                        const link = document.createElement('a');
-                                                        link.href = `data:${img.mimeType};base64,${img.data}`;
-                                                        link.download = `nanobanana-${Date.now()}.jpg`;
-                                                        document.body.appendChild(link);
-                                                        link.click();
-                                                        document.body.removeChild(link);
-                                                    }}
-                                                >
-                                                    <Download className="mr-2 h-4 w-4" /> Download
-                                                </Button>
-                                                {/* Show regenerate button only on last model message */}
-                                                {msg.role === "model" && index === messages.length - 1 && (
+                                        <div key={imgIndex} className="mt-2">
+                                            <div className="relative group">
+                                                <img
+                                                    src={`data:${img.mimeType};base64,${img.data}`}
+                                                    alt="Generated Art"
+                                                    className="max-w-full rounded-lg shadow-lg border border-white/10"
+                                                />
+                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
                                                     <Button
                                                         variant="secondary"
                                                         size="sm"
-                                                        onClick={handleRegenerate}
-                                                        disabled={isLoading}
+                                                        onClick={() => {
+                                                            const link = document.createElement('a');
+                                                            link.href = `data:${img.mimeType};base64,${img.data}`;
+                                                            link.download = `nanobanana-${Date.now()}.jpg`;
+                                                            document.body.appendChild(link);
+                                                            link.click();
+                                                            document.body.removeChild(link);
+                                                        }}
                                                     >
-                                                        <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+                                                        <Download className="mr-2 h-4 w-4" /> Download
                                                     </Button>
-                                                )}
+                                                </div>
                                             </div>
+                                            {/* Show regenerate button only on last model message */}
+                                            {msg.role === "model" && index === messages.length - 1 && (
+                                                <Button
+                                                    variant="outline"
+                                                    size="sm"
+                                                    onClick={handleRegenerate}
+                                                    disabled={isLoading}
+                                                    className="mt-2 w-full"
+                                                >
+                                                    <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+                                                </Button>
+                                            )}
                                         </div>
                                     ))}
                                 </div>
