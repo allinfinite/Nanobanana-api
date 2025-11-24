@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Header } from "@/components/Header";
-import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download } from "lucide-react";
+import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download, Paperclip, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
@@ -20,7 +20,9 @@ export default function NanobananaPage() {
     const [aspectRatio, setAspectRatio] = useState("1:1");
     const [messages, setMessages] = useState<Message[]>([]);
     const [isLoading, setIsLoading] = useState(false);
+    const [uploadedImages, setUploadedImages] = useState<{ mimeType: string; data: string }[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Load API key from local storage on mount
     useEffect(() => {
@@ -42,13 +44,65 @@ export default function NanobananaPage() {
         scrollToBottom();
     }, [messages]);
 
+    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files;
+        if (!files || files.length === 0) return;
+
+        const imagePromises = Array.from(files).map((file) => {
+            return new Promise<{ mimeType: string; data: string }>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => {
+                    const base64 = reader.result as string;
+                    const data = base64.split(",")[1]; // Remove data:image/...;base64, prefix
+                    resolve({ mimeType: file.type, data });
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(file);
+            });
+        });
+
+        try {
+            const images = await Promise.all(imagePromises);
+            setUploadedImages((prev) => [...prev, ...images]);
+        } catch (error) {
+            console.error("Error reading images:", error);
+        }
+
+        // Reset file input
+        if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+        }
+    };
+
+    const handleRemoveImage = (index: number) => {
+        setUploadedImages((prev) => prev.filter((_, i) => i !== index));
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!input.trim()) return;
+        if (!input.trim() && uploadedImages.length === 0) return;
 
         const userMessage = input.trim();
+
+        // Build message parts with text and images
+        const messageParts: any[] = [];
+        if (userMessage) {
+            messageParts.push({ text: userMessage });
+        }
+        uploadedImages.forEach((img) => {
+            messageParts.push({ inlineData: img });
+        });
+
         setInput("");
-        setMessages((prev) => [...prev, { role: "user", parts: [{ text: userMessage }] }]);
+        setUploadedImages([]);
+        setMessages((prev) => [
+            ...prev,
+            {
+                role: "user",
+                parts: messageParts,
+                images: uploadedImages.length > 0 ? uploadedImages : undefined
+            }
+        ]);
         setIsLoading(true);
 
         try {
@@ -290,11 +344,51 @@ export default function NanobananaPage() {
                                 </Button>
                             ))}
                         </div>
+                        {/* Image Upload Previews */}
+                        {uploadedImages.length > 0 && (
+                            <div className="flex gap-2 flex-wrap pb-2">
+                                {uploadedImages.map((img, index) => (
+                                    <div key={index} className="relative group">
+                                        <img
+                                            src={`data:${img.mimeType};base64,${img.data}`}
+                                            alt={`Upload ${index + 1}`}
+                                            className="h-20 w-20 object-cover rounded-lg border border-white/10"
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemoveImage(index)}
+                                            className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                         <form onSubmit={handleSubmit} className="flex gap-2">
+                            <input
+                                ref={fileInputRef}
+                                type="file"
+                                accept="image/*"
+                                multiple
+                                onChange={handleFileSelect}
+                                className="hidden"
+                            />
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => fileInputRef.current?.click()}
+                                disabled={isLoading}
+                                className="shrink-0 text-muted-foreground hover:text-white hover:bg-white/10 px-2"
+                            >
+                                <Paperclip className="h-4 w-4" />
+                            </Button>
                             <Input
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Describe the image you want to generate..."
+                                placeholder="Describe the image you want to generate or edit..."
                                 className="flex-1 bg-secondary/50 border-none focus-visible:ring-1 focus-visible:ring-accent/50"
                                 disabled={isLoading}
                             />
