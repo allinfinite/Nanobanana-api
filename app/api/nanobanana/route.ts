@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 export async function POST(req: Request) {
     try {
-        const { message, history, apiKey: userApiKey, aspectRatio } = await req.json();
+        const { message, messageParts, history, apiKey: userApiKey, aspectRatio } = await req.json();
 
         const apiKey = userApiKey || process.env.GEMINI_API_SECRET;
 
@@ -14,9 +14,9 @@ export async function POST(req: Request) {
             );
         }
 
-        if (!message) {
+        if (!message && !messageParts) {
             return NextResponse.json(
-                { error: "Message is required" },
+                { error: "Message or messageParts is required" },
                 { status: 400 }
             );
         }
@@ -24,7 +24,7 @@ export async function POST(req: Request) {
         const genAI = new GoogleGenerativeAI(apiKey);
         const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
 
-        // Validate and normalize history format
+        // Validate and normalize history format - preserve thought_signatures
         const normalizedHistory = (history || []).map((item: any) => {
             // Ensure parts is an array
             let parts = item.parts;
@@ -32,9 +32,18 @@ export async function POST(req: Request) {
                 parts = [{ text: String(parts || "") }];
             }
             
-            // For model messages, filter out inlineData (not allowed by API)
+            // For model messages, filter out inlineData (not allowed by API) but preserve thought_signatures
             if (item.role === "model") {
-                parts = parts.filter((part: any) => part.text && !part.inlineData);
+                parts = parts
+                    .filter((part: any) => part.text && !part.inlineData)
+                    .map((part: any) => {
+                        // Preserve thought_signature if it exists
+                        const textPart: any = { text: part.text };
+                        if (part.thought_signature) {
+                            textPart.thought_signature = part.thought_signature;
+                        }
+                        return textPart;
+                    });
                 // Ensure at least one text part exists
                 if (parts.length === 0) {
                     parts = [{ text: "Image generated successfully." }];
@@ -51,10 +60,23 @@ export async function POST(req: Request) {
             history: normalizedHistory,
         });
 
-        // Append aspect ratio instruction to the message since it's not supported in config for this model
-        const promptWithAspectRatio = aspectRatio ? `${message} (Aspect Ratio: ${aspectRatio})` : message;
+        // Build message parts - use messageParts if provided, otherwise create from message text
+        let partsToSend: any[];
+        if (messageParts && Array.isArray(messageParts)) {
+            // Use provided messageParts, append aspect ratio to text parts if needed
+            partsToSend = messageParts.map((part: any) => {
+                if (part.text && aspectRatio) {
+                    return { ...part, text: `${part.text} (Aspect Ratio: ${aspectRatio})` };
+                }
+                return part;
+            });
+        } else {
+            // Fallback to text message
+            const promptWithAspectRatio = aspectRatio ? `${message} (Aspect Ratio: ${aspectRatio})` : message;
+            partsToSend = [{ text: promptWithAspectRatio }];
+        }
 
-        const result = await chat.sendMessage(promptWithAspectRatio);
+        const result = await chat.sendMessage(partsToSend);
         const response = await result.response;
 
         return NextResponse.json({

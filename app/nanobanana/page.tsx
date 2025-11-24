@@ -106,7 +106,7 @@ export default function NanobananaPage() {
 
         try {
             // Get history without the last model response
-            // Filter out inlineData from model messages (not allowed by API)
+            // Filter out inlineData from model messages (not allowed by API) but preserve thought_signatures
             const history = messages.slice(0, -1).map(m => {
                 let parts = m.parts;
                 
@@ -115,9 +115,18 @@ export default function NanobananaPage() {
                     parts = [{ text: parts }];
                 }
                 
-                // For model messages, filter out inlineData parts (only keep text parts)
+                // For model messages, filter out inlineData parts (only keep text parts) but preserve thought_signatures
                 if (m.role === "model") {
-                    parts = parts.filter((part: any) => part.text && !part.inlineData);
+                    parts = parts
+                        .filter((part: any) => part.text && !part.inlineData)
+                        .map((part: any) => {
+                            // Preserve thought_signature if it exists
+                            const textPart: any = { text: part.text };
+                            if (part.thought_signature) {
+                                textPart.thought_signature = part.thought_signature;
+                            }
+                            return textPart;
+                        });
                     // If no text parts remain, create a placeholder text part
                     if (parts.length === 0) {
                         parts = [{ text: "Image generated successfully." }];
@@ -130,17 +139,24 @@ export default function NanobananaPage() {
                 };
             });
 
-            // Extract text from last user message
-            const textParts = Array.isArray(lastUserMessage.parts)
-                ? lastUserMessage.parts.filter((part: any) => part.text)
-                : [];
-            const userMessage = textParts.length > 0 ? textParts[0].text : "";
+            // Extract message parts from last user message
+            let messageParts: any[] = [];
+            let userMessage = "";
+            
+            if (Array.isArray(lastUserMessage.parts)) {
+                messageParts = lastUserMessage.parts;
+                const textParts = messageParts.filter((part: any) => part.text);
+                userMessage = textParts.length > 0 ? textParts[0].text : "";
+            } else {
+                userMessage = String(lastUserMessage.parts || "");
+            }
 
             const response = await fetch("/api/nanobanana", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     message: userMessage,
+                    messageParts: Array.isArray(lastUserMessage.parts) ? messageParts : undefined,
                     history,
                     apiKey,
                     aspectRatio,
@@ -206,7 +222,7 @@ export default function NanobananaPage() {
 
         try {
             // Convert messages to Gemini format for history
-            // Filter out inlineData from model messages (not allowed by API)
+            // Filter out inlineData from model messages (not allowed by API) but preserve thought_signatures
             const history = messages.map(m => {
                 let parts = m.parts;
                 
@@ -215,9 +231,18 @@ export default function NanobananaPage() {
                     parts = [{ text: parts }];
                 }
                 
-                // For model messages, filter out inlineData parts (only keep text parts)
+                // For model messages, filter out inlineData parts (only keep text parts) but preserve thought_signatures
                 if (m.role === "model") {
-                    parts = parts.filter((part: any) => part.text && !part.inlineData);
+                    parts = parts
+                        .filter((part: any) => part.text && !part.inlineData)
+                        .map((part: any) => {
+                            // Preserve thought_signature if it exists
+                            const textPart: any = { text: part.text };
+                            if (part.thought_signature) {
+                                textPart.thought_signature = part.thought_signature;
+                            }
+                            return textPart;
+                        });
                     // If no text parts remain, create a placeholder text part
                     if (parts.length === 0) {
                         parts = [{ text: "Image generated successfully." }];
@@ -235,6 +260,7 @@ export default function NanobananaPage() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     message: userMessage,
+                    messageParts: messageParts.length > 0 ? messageParts : undefined,
                     history,
                     apiKey,
                     aspectRatio,
