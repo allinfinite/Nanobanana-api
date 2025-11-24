@@ -210,7 +210,42 @@ export default function NanobananaPage() {
                     </div>
 
                     {/* Input Area */}
-                    <div className="p-4 bg-black/20 border-t border-white/5 flex flex-col gap-2">
+                    <div className="p-4 bg-black/20 border-t border-white/5 flex flex-col gap-4">
+                        {/* Preset Buttons */}
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                            {[
+                                { label: "Flyer", prefix: "A professional flyer design for" },
+                                { label: "Video Cover", prefix: "A YouTube video thumbnail for" },
+                                { label: "Featured Image", prefix: "A blog post featured image for" },
+                                { label: "Advertisement", prefix: "An eye-catching advertisement for" },
+                                { label: "Infographic", prefix: "An educational infographic about" },
+                                { label: "Social Media", prefix: "A social media post graphic for" },
+                                { label: "Logo", prefix: "A minimalist logo design for" },
+                                { label: "Product Shot", prefix: "A professional product photography shot of" },
+                            ].map((preset) => (
+                                <Button
+                                    key={preset.label}
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        const separator = ": ";
+                                        const currentInput = input;
+                                        // If input already has a preset prefix (contains separator), replace it
+                                        // Otherwise prepend
+                                        const content = currentInput.includes(separator)
+                                            ? currentInput.split(separator).slice(1).join(separator)
+                                            : currentInput;
+
+                                        setInput(`${preset.prefix}${separator}${content}`);
+                                    }}
+                                    className="whitespace-nowrap bg-secondary/30 hover:bg-accent hover:text-white border-white/10 text-xs"
+                                >
+                                    {preset.label}
+                                </Button>
+                            ))}
+                        </div>
+
                         <div className="flex gap-2 justify-center mb-2">
                             {[
                                 { ratio: "1:1", label: "Square", width: 24, height: 24 },
