@@ -22,19 +22,16 @@ export async function POST(req: Request) {
         }
 
         const genAI = new GoogleGenerativeAI(apiKey);
-        const model = genAI.getGenerativeModel({
-            model: "gemini-3-pro-image-preview",
-            generationConfig: {
-                // @ts-ignore - aspectRatio might not be in the types yet for this preview model
-                aspectRatio: aspectRatio || "1:1"
-            }
-        });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-pro-image-preview" });
 
         const chat = model.startChat({
             history: history || [],
         });
 
-        const result = await chat.sendMessage(message);
+        // Append aspect ratio instruction to the message since it's not supported in config for this model
+        const promptWithAspectRatio = aspectRatio ? `${message} (Aspect Ratio: ${aspectRatio})` : message;
+
+        const result = await chat.sendMessage(promptWithAspectRatio);
         const response = await result.response;
 
         return NextResponse.json({
