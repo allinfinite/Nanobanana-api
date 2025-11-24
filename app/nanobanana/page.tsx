@@ -211,20 +211,45 @@ export default function NanobananaPage() {
 
                     {/* Input Area */}
                     <div className="p-4 bg-black/20 border-t border-white/5 flex flex-col gap-2">
-                        <div className="flex gap-2 justify-center">
-                            {["1:1", "16:9", "9:16", "4:3", "3:4"].map((ratio) => (
+                        <div className="flex gap-2 justify-center mb-2">
+                            {[
+                                { ratio: "1:1", label: "Square", width: 24, height: 24 },
+                                { ratio: "16:9", label: "Wide", width: 32, height: 18 },
+                                { ratio: "9:16", label: "Tall", width: 18, height: 32 },
+                                { ratio: "4:3", label: "Standard", width: 28, height: 21 },
+                                { ratio: "3:4", label: "Portrait", width: 21, height: 28 },
+                            ].map((item) => (
                                 <Button
-                                    key={ratio}
+                                    key={item.ratio}
                                     type="button"
-                                    variant={aspectRatio === ratio ? "secondary" : "ghost"}
+                                    variant={aspectRatio === item.ratio ? "secondary" : "ghost"}
                                     size="sm"
-                                    onClick={() => setAspectRatio(ratio)}
+                                    onClick={() => setAspectRatio(item.ratio)}
                                     className={cn(
-                                        "text-xs h-7",
-                                        aspectRatio === ratio ? "bg-accent text-white" : "text-muted-foreground hover:text-white"
+                                        "h-10 w-12 p-0 flex items-center justify-center transition-all",
+                                        aspectRatio === item.ratio ? "bg-accent text-white ring-2 ring-accent/50" : "text-muted-foreground hover:text-white hover:bg-white/10"
                                     )}
+                                    title={item.label}
                                 >
-                                    {ratio}
+                                    <div className="flex flex-col items-center gap-1">
+                                        <svg
+                                            width="24"
+                                            height="24"
+                                            viewBox="0 0 36 36"
+                                            className={cn("fill-current", aspectRatio === item.ratio ? "text-white" : "text-muted-foreground")}
+                                        >
+                                            <rect
+                                                x={18 - item.width / 2}
+                                                y={18 - item.height / 2}
+                                                width={item.width}
+                                                height={item.height}
+                                                rx="2"
+                                                stroke="currentColor"
+                                                strokeWidth="2"
+                                                fill="none"
+                                            />
+                                        </svg>
+                                    </div>
                                 </Button>
                             ))}
                         </div>
