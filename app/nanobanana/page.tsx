@@ -184,9 +184,10 @@ export default function NanobananaPage() {
             ]);
 
         } catch (error: any) {
+            const errorMessage = error.message || "An unexpected error occurred";
             setMessages((prev) => [
                 ...prev,
-                { role: "model", parts: `Error: ${error.message}` },
+                { role: "model", parts: `❌ ${errorMessage}` },
             ]);
         } finally {
             setIsLoading(false);
@@ -291,9 +292,10 @@ export default function NanobananaPage() {
             ]);
 
         } catch (error: any) {
+            const errorMessage = error.message || "An unexpected error occurred";
             setMessages((prev) => [
                 ...prev,
-                { role: "model", parts: `Error: ${error.message}` },
+                { role: "model", parts: `❌ ${errorMessage}` },
             ]);
         } finally {
             setIsLoading(false);

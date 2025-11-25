@@ -86,9 +86,23 @@ export async function POST(req: Request) {
 
     } catch (error: any) {
         console.error("Nanobanana API Error:", error);
+        
+        // Provide user-friendly error messages
+        let errorMessage = error.message || "Something went wrong";
+        let statusCode = 500;
+        
+        // Check for API key errors
+        if (errorMessage.includes("API key not valid") || errorMessage.includes("API_KEY_INVALID")) {
+            errorMessage = "Invalid API key. Please check your API key and try again.";
+            statusCode = 401;
+        } else if (errorMessage.includes("API key")) {
+            errorMessage = "API key error. Please verify your API key is correct.";
+            statusCode = 401;
+        }
+        
         return NextResponse.json(
-            { error: error.message || "Something went wrong" },
-            { status: 500 }
+            { error: errorMessage },
+            { status: statusCode }
         );
     }
 }
