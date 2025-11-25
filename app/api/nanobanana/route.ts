@@ -37,11 +37,10 @@ export async function POST(req: Request) {
                 parts = parts
                     .filter((part: any) => part.text && !part.inlineData)
                     .map((part: any) => {
-                        // Preserve thought_signature if it exists
-                        const textPart: any = { text: part.text };
-                        if (part.thought_signature) {
-                            textPart.thought_signature = part.thought_signature;
-                        }
+                        // Preserve all properties from the original part, especially thought_signature
+                        const textPart: any = { ...part };
+                        // Ensure we only keep text-related properties, remove inlineData if present
+                        delete textPart.inlineData;
                         return textPart;
                     });
                 // Ensure at least one text part exists
