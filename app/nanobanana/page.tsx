@@ -322,7 +322,7 @@ export default function NanobananaPage() {
     };
 
     // Helper function to make API call
-    const makeApiCall = async (prompt: string, history: any[], label?: string, images?: { mimeType: string; data: string }[]): Promise<{ mimeType: string; data: string; label?: string }[]> => {
+    const makeApiCall = async (prompt: string, history: any[], label?: string, images?: { mimeType: string; data: string }[]): Promise<{ images: { mimeType: string; data: string; label?: string }[]; responseParts: any[] }> => {
         const messageParts: any[] = [{ text: prompt }];
         const imagesToUse = images || uploadedImages;
         imagesToUse.forEach((img) => {
@@ -368,7 +368,7 @@ export default function NanobananaPage() {
                 label: label
             }));
 
-        return generatedImages;
+        return { images: generatedImages, responseParts };
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -428,15 +428,28 @@ export default function NanobananaPage() {
                 }
                 
                 if (m.role === "model") {
-                    parts = parts
+                    // Filter out inlineData but preserve all text parts with their thought_signatures
+                    const textParts = parts
                         .filter((part: any) => part.text && !part.inlineData)
                         .map((part: any) => {
                             const textPart: any = { ...part };
                             delete textPart.inlineData;
                             return textPart;
                         });
-                    if (parts.length === 0) {
-                        parts = [{ text: "Image generated successfully." }];
+                    
+                    // If no text parts exist, check if we can extract thought_signature from any part
+                    if (textParts.length === 0) {
+                        // Look for thought_signature in any part (even if it has inlineData)
+                        const thoughtSignature = parts.find((part: any) => part.thoughtSignature)?.thoughtSignature;
+                        if (thoughtSignature) {
+                            // Create a text part with the thought_signature
+                            parts = [{ text: "Image generated successfully.", thoughtSignature }];
+                        } else {
+                            // No thought_signature found, create placeholder
+                            parts = [{ text: "Image generated successfully." }];
+                        }
+                    } else {
+                        parts = textParts;
                     }
                 }
                 
@@ -447,6 +460,7 @@ export default function NanobananaPage() {
             });
 
             let allGeneratedImages: { mimeType: string; data: string; label?: string }[] = [];
+            let allResponseParts: any[] = [];
 
             if (isFullWebsiteSet) {
                 // Generate 3 mockups: Landing, Blog, Product in the same style
@@ -471,8 +485,9 @@ export default function NanobananaPage() {
                             parts: parts.filter((part: any) => part.text || part.inlineData)
                         };
                     });
-                    const images = await makeApiCall(prompts[i].prompt, freshHistory, prompts[i].label, currentUploadedImages);
-                    allGeneratedImages.push(...images);
+                    const result = await makeApiCall(prompts[i].prompt, freshHistory, prompts[i].label, currentUploadedImages);
+                    allGeneratedImages.push(...result.images);
+                    allResponseParts.push(...result.responseParts);
                 }
             } else if (generateMultiple) {
                 // Generate multiple variations
@@ -501,8 +516,12 @@ export default function NanobananaPage() {
                         generationCount++;
                         setGenerationProgress({ current: generationCount, total: totalGenerations });
                         const prompt = buildPrompt(baseMessage, presetPrefix);
-                        const images = await makeApiCall(prompt, history, undefined, currentUploadedImages);
-                        allGeneratedImages.push(...images);
+                        const result = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                        allGeneratedImages.push(...result.images);
+                        // Store response parts from the last call (for thought_signature preservation)
+                        if (i === numVariations - 1) {
+                            allResponseParts = result.responseParts;
+                        }
                     }
                     
                     // Restore original styles
@@ -513,15 +532,22 @@ export default function NanobananaPage() {
                 // Single generation
                 setGenerationProgress({ current: 1, total: 1 });
                 const prompt = buildPrompt(baseMessage, presetPrefix);
-                const images = await makeApiCall(prompt, history, undefined, currentUploadedImages);
-                allGeneratedImages = images;
+                const result = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                allGeneratedImages = result.images;
+                allResponseParts = result.responseParts;
             }
+
+            // Store the full response parts to preserve thought_signatures
+            // If we have response parts, use them; otherwise create a placeholder
+            const responsePartsToStore = allResponseParts.length > 0 
+                ? allResponseParts 
+                : [{ text: isFullWebsiteSet ? "Full website set generated successfully." : "Image generated successfully." }];
 
             setMessages((prev) => [
                 ...prev,
                 {
                     role: "model",
-                    parts: [{ text: isFullWebsiteSet ? "Full website set generated successfully." : "Image generated successfully." }],
+                    parts: responsePartsToStore,
                     images: allGeneratedImages.length > 0 ? allGeneratedImages : undefined
                 }
             ]);
