@@ -181,11 +181,20 @@ export default function NanobananaPage() {
                 }),
             });
 
-            const data = await response.json();
-
+            // Check if response is OK before parsing JSON
             if (!response.ok) {
-                throw new Error(data.error || "Failed to generate image");
+                let errorMessage = "Failed to generate image";
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (e) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                }
+                throw new Error(errorMessage);
             }
+
+            const data = await response.json();
 
             const responseParts = data.candidates?.[0]?.content?.parts || [];
             const generatedImages = responseParts
@@ -272,11 +281,20 @@ export default function NanobananaPage() {
             }),
         });
 
-        const data = await response.json();
-
+        // Check if response is OK before parsing JSON
         if (!response.ok) {
-            throw new Error(data.error || "Failed to generate image");
+            let errorMessage = "Failed to generate image";
+            try {
+                const errorData = await response.json();
+                errorMessage = errorData.error || errorMessage;
+            } catch (e) {
+                // If response is not JSON, use status text
+                errorMessage = response.statusText || errorMessage;
+            }
+            throw new Error(errorMessage);
         }
+
+        const data = await response.json();
 
         const responseParts = data.candidates?.[0]?.content?.parts || [];
         const generatedImages = responseParts
