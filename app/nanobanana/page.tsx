@@ -324,7 +324,9 @@ export default function NanobananaPage() {
     // Helper function to make API call
     const makeApiCall = async (prompt: string, history: any[], label?: string, images?: { mimeType: string; data: string }[]): Promise<{ images: { mimeType: string; data: string; label?: string }[]; responseParts: any[] }> => {
         const messageParts: any[] = [{ text: prompt }];
-        const imagesToUse = images || uploadedImages;
+        // Only include images if explicitly provided (new uploads)
+        // Don't re-send images from conversation history - they're already there
+        const imagesToUse = images && images.length > 0 ? images : [];
         imagesToUse.forEach((img) => {
             messageParts.push({ inlineData: img });
         });
@@ -398,7 +400,8 @@ export default function NanobananaPage() {
         if (userMessage) {
             messageParts.push({ text: userMessage });
         }
-        const currentUploadedImages = [...uploadedImages];
+        // Only include images if there are new uploads (not when just replying)
+        const currentUploadedImages = uploadedImages.length > 0 ? [...uploadedImages] : [];
         currentUploadedImages.forEach((img) => {
             messageParts.push({ inlineData: img });
         });
@@ -420,6 +423,7 @@ export default function NanobananaPage() {
 
         try {
             // Convert messages to Gemini format for history
+            // Exclude images from history to reduce payload size - images are already processed
             const history = messages.map(m => {
                 let parts = m.parts;
                 
@@ -427,7 +431,21 @@ export default function NanobananaPage() {
                     parts = [{ text: parts }];
                 }
                 
-                if (m.role === "model") {
+                if (m.role === "user") {
+                    // For user messages, only include text parts in history (exclude images to reduce payload)
+                    // Images are already in the conversation context from previous messages
+                    parts = parts
+                        .filter((part: any) => part.text && !part.inlineData)
+                        .map((part: any) => {
+                            const textPart: any = { ...part };
+                            delete textPart.inlineData;
+                            return textPart;
+                        });
+                    // Ensure at least one text part exists
+                    if (parts.length === 0) {
+                        parts = [{ text: "" }];
+                    }
+                } else if (m.role === "model") {
                     // Filter out inlineData but preserve all text parts with their thought_signatures
                     const textParts = parts
                         .filter((part: any) => part.text && !part.inlineData)
@@ -485,7 +503,8 @@ export default function NanobananaPage() {
                             parts: parts.filter((part: any) => part.text || part.inlineData)
                         };
                     });
-                    const result = await makeApiCall(prompts[i].prompt, freshHistory, prompts[i].label, currentUploadedImages);
+                    // Only pass images if there are new uploads
+                    const result = await makeApiCall(prompts[i].prompt, freshHistory, prompts[i].label, currentUploadedImages.length > 0 ? currentUploadedImages : undefined);
                     allGeneratedImages.push(...result.images);
                     allResponseParts.push(...result.responseParts);
                 }
@@ -516,7 +535,8 @@ export default function NanobananaPage() {
                         generationCount++;
                         setGenerationProgress({ current: generationCount, total: totalGenerations });
                         const prompt = buildPrompt(baseMessage, presetPrefix);
-                        const result = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                        // Only pass images if there are new uploads
+                        const result = await makeApiCall(prompt, history, undefined, currentUploadedImages.length > 0 ? currentUploadedImages : undefined);
                         allGeneratedImages.push(...result.images);
                         // Store response parts from the last call (for thought_signature preservation)
                         if (i === numVariations - 1) {
@@ -532,7 +552,8 @@ export default function NanobananaPage() {
                 // Single generation
                 setGenerationProgress({ current: 1, total: 1 });
                 const prompt = buildPrompt(baseMessage, presetPrefix);
-                const result = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                // Only pass images if there are new uploads
+                const result = await makeApiCall(prompt, history, undefined, currentUploadedImages.length > 0 ? currentUploadedImages : undefined);
                 allGeneratedImages = result.images;
                 allResponseParts = result.responseParts;
             }
