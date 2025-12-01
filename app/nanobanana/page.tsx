@@ -63,21 +63,77 @@ export default function NanobananaPage() {
         scrollToBottom();
     }, [messages]);
 
+    // Helper function to compress/resize image
+    const compressImage = (file: File, maxWidth: number = 1920, maxHeight: number = 1920, quality: number = 0.8): Promise<{ mimeType: string; data: string }> => {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    // Calculate new dimensions
+                    if (width > height) {
+                        if (width > maxWidth) {
+                            height = (height * maxWidth) / width;
+                            width = maxWidth;
+                        }
+                    } else {
+                        if (height > maxHeight) {
+                            width = (width * maxHeight) / height;
+                            height = maxHeight;
+                        }
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) {
+                        reject(new Error('Could not get canvas context'));
+                        return;
+                    }
+
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    // Convert to base64
+                    const mimeType = file.type || 'image/jpeg';
+                    canvas.toBlob(
+                        (blob) => {
+                            if (!blob) {
+                                reject(new Error('Failed to compress image'));
+                                return;
+                            }
+                            const reader = new FileReader();
+                            reader.onload = () => {
+                                const base64 = reader.result as string;
+                                const data = base64.split(",")[1];
+                                resolve({ mimeType, data });
+                            };
+                            reader.onerror = reject;
+                            reader.readAsDataURL(blob);
+                        },
+                        mimeType,
+                        quality
+                    );
+                };
+                img.onerror = reject;
+                img.src = e.target?.result as string;
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+        });
+    };
+
     const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
         const files = e.target.files;
         if (!files || files.length === 0) return;
 
         const imagePromises = Array.from(files).map((file) => {
-            return new Promise<{ mimeType: string; data: string }>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onload = () => {
-                    const base64 = reader.result as string;
-                    const data = base64.split(",")[1]; // Remove data:image/...;base64, prefix
-                    resolve({ mimeType: file.type, data });
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(file);
-            });
+            // Compress images to reduce payload size
+            return compressImage(file);
         });
 
         try {
@@ -190,6 +246,10 @@ export default function NanobananaPage() {
                 } catch (e) {
                     // If response is not JSON, use status text
                     errorMessage = response.statusText || errorMessage;
+                    // Provide user-friendly message for 413 errors
+                    if (response.status === 413) {
+                        errorMessage = "Image file is too large. Please use a smaller image or compress it before uploading.";
+                    }
                 }
                 throw new Error(errorMessage);
             }
@@ -281,18 +341,22 @@ export default function NanobananaPage() {
             }),
         });
 
-        // Check if response is OK before parsing JSON
-        if (!response.ok) {
-            let errorMessage = "Failed to generate image";
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-            } catch (e) {
-                // If response is not JSON, use status text
-                errorMessage = response.statusText || errorMessage;
+            // Check if response is OK before parsing JSON
+            if (!response.ok) {
+                let errorMessage = "Failed to generate image";
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (e) {
+                    // If response is not JSON, use status text
+                    errorMessage = response.statusText || errorMessage;
+                    // Provide user-friendly message for 413 errors
+                    if (response.status === 413) {
+                        errorMessage = "Image file is too large. Please use a smaller image or compress it before uploading.";
+                    }
+                }
+                throw new Error(errorMessage);
             }
-            throw new Error(errorMessage);
-        }
 
         const data = await response.json();
 
@@ -386,15 +450,28 @@ export default function NanobananaPage() {
 
             if (isFullWebsiteSet) {
                 // Generate 3 mockups: Landing, Blog, Product in the same style
+                // Use fresh history for each call to avoid confusion
                 const prompts = [
-                    { prompt: buildPrompt(baseMessage, "A modern landing page mockup for"), label: "Landing Page" },
-                    { prompt: buildPrompt(baseMessage, "A blog homepage design for"), label: "Blog" },
-                    { prompt: buildPrompt(baseMessage, "An e-commerce product page layout for"), label: "Product Page" },
+                    { prompt: buildPrompt(baseMessage, "Create a modern landing page mockup for"), label: "Landing Page" },
+                    { prompt: buildPrompt(baseMessage, "Create a blog homepage design layout for"), label: "Blog" },
+                    { prompt: buildPrompt(baseMessage, "Create an e-commerce product page layout for"), label: "Product Page" },
                 ];
 
                 for (let i = 0; i < prompts.length; i++) {
                     setGenerationProgress({ current: i + 1, total: 3, label: prompts[i].label });
-                    const images = await makeApiCall(prompts[i].prompt, history, prompts[i].label, currentUploadedImages);
+                    // Use fresh history (only user messages, no previous model responses from this batch)
+                    // This ensures each prompt generates the correct page type
+                    const freshHistory = messages.filter(m => m.role === "user").map(m => {
+                        let parts = m.parts;
+                        if (!Array.isArray(parts)) {
+                            parts = [{ text: parts }];
+                        }
+                        return {
+                            role: m.role,
+                            parts: parts.filter((part: any) => part.text || part.inlineData)
+                        };
+                    });
+                    const images = await makeApiCall(prompts[i].prompt, freshHistory, prompts[i].label, currentUploadedImages);
                     allGeneratedImages.push(...images);
                 }
             } else if (generateMultiple) {
