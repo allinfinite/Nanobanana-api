@@ -60,19 +60,14 @@ export async function POST(req: Request) {
         });
 
         // Build message parts - use messageParts if provided, otherwise create from message text
+        // Note: Aspect ratio and styles are now included in the prompt by the client
         let partsToSend: any[];
         if (messageParts && Array.isArray(messageParts)) {
-            // Use provided messageParts, append aspect ratio to text parts if needed
-            partsToSend = messageParts.map((part: any) => {
-                if (part.text && aspectRatio) {
-                    return { ...part, text: `${part.text} (Aspect Ratio: ${aspectRatio})` };
-                }
-                return part;
-            });
+            // Use provided messageParts as-is (styles and aspect ratio already included in prompt)
+            partsToSend = messageParts;
         } else {
-            // Fallback to text message
-            const promptWithAspectRatio = aspectRatio ? `${message} (Aspect Ratio: ${aspectRatio})` : message;
-            partsToSend = [{ text: promptWithAspectRatio }];
+            // Fallback to text message (for backward compatibility)
+            partsToSend = [{ text: message }];
         }
 
         const result = await chat.sendMessage(partsToSend);

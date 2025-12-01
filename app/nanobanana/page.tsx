@@ -5,14 +5,25 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Header } from "@/components/Header";
-import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download, Paperclip, X, RefreshCw } from "lucide-react";
+import { Send, Key, Bot, User, Loader2, Image as ImageIcon, Download, Paperclip, X, RefreshCw, Layers, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Message {
     role: "user" | "model";
     parts: any; // Store full parts structure to preserve thought signatures
-    images?: { mimeType: string; data: string }[];
+    images?: { mimeType: string; data: string; label?: string }[];
 }
+
+const STYLE_PRESETS = [
+    "Modern Minimalist",
+    "Bold & Colorful",
+    "Corporate Professional",
+    "Creative/Artistic",
+    "Dark Mode",
+    "Light & Airy",
+    "Tech Startup",
+    "Elegant Luxury",
+];
 
 export default function NanobananaPage() {
     const [apiKey, setApiKey] = useState("");
@@ -23,6 +34,14 @@ export default function NanobananaPage() {
     const [uploadedImages, setUploadedImages] = useState<{ mimeType: string; data: string }[]>([]);
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    
+    // New state for styles and multiple generation
+    const [selectedStyles, setSelectedStyles] = useState<string[]>([]);
+    const [customStyle, setCustomStyle] = useState("");
+    const [generateMultiple, setGenerateMultiple] = useState(false);
+    const [numVariations, setNumVariations] = useState(3);
+    const [currentPreset, setCurrentPreset] = useState<string | null>(null);
+    const [generationProgress, setGenerationProgress] = useState<{ current: number; total: number; label?: string } | null>(null);
 
     // Load API key from local storage on mount
     useEffect(() => {
@@ -193,56 +212,147 @@ export default function NanobananaPage() {
         }
     };
 
+    // Helper function to build prompt with style
+    const buildPrompt = (baseMessage: string, presetPrefix?: string, label?: string): string => {
+        let prompt = baseMessage;
+        
+        // Extract content after separator if preset is already applied
+        const separator = ": ";
+        if (prompt.includes(separator)) {
+            const parts = prompt.split(separator);
+            if (parts.length > 1) {
+                prompt = parts.slice(1).join(separator);
+            }
+        }
+        
+        // Apply preset prefix if provided
+        if (presetPrefix) {
+            prompt = `${presetPrefix}${separator}${prompt}`;
+        }
+        
+        // Build style string
+        const styleParts: string[] = [];
+        if (selectedStyles.length > 0) {
+            styleParts.push(...selectedStyles);
+        }
+        if (customStyle.trim()) {
+            styleParts.push(customStyle.trim());
+        }
+        const styleString = styleParts.length > 0 ? styleParts.join(", ") : undefined;
+        
+        // Build final prompt
+        let finalPrompt = prompt;
+        if (styleString) {
+            finalPrompt = `${finalPrompt} | Style: ${styleString}`;
+        }
+        if (aspectRatio) {
+            finalPrompt = `${finalPrompt} | Aspect Ratio: ${aspectRatio}`;
+        }
+        
+        return finalPrompt;
+    };
+
+    // Helper function to make API call
+    const makeApiCall = async (prompt: string, history: any[], label?: string, images?: { mimeType: string; data: string }[]): Promise<{ mimeType: string; data: string; label?: string }[]> => {
+        const messageParts: any[] = [{ text: prompt }];
+        const imagesToUse = images || uploadedImages;
+        imagesToUse.forEach((img) => {
+            messageParts.push({ inlineData: img });
+        });
+
+        const response = await fetch("/api/nanobanana", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                message: prompt,
+                messageParts: messageParts.length > 0 ? messageParts : undefined,
+                history,
+                apiKey,
+                aspectRatio,
+            }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.error || "Failed to generate image");
+        }
+
+        const responseParts = data.candidates?.[0]?.content?.parts || [];
+        const generatedImages = responseParts
+            .filter((part: any) => part.inlineData)
+            .map((part: any) => ({
+                ...part.inlineData,
+                label: label
+            }));
+
+        return generatedImages;
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!input.trim() && uploadedImages.length === 0) return;
 
         const userMessage = input.trim();
+        const separator = ": ";
+        
+        // Check if Full Website Set preset is selected
+        const isFullWebsiteSet = currentPreset === "Full Website Set";
+        
+        // Extract preset prefix if present (but not for Full Website Set)
+        let presetPrefix: string | undefined;
+        let baseMessage = userMessage;
+        if (!isFullWebsiteSet && userMessage.includes(separator)) {
+            const parts = userMessage.split(separator);
+            presetPrefix = parts[0];
+            baseMessage = parts.slice(1).join(separator);
+        } else if (isFullWebsiteSet) {
+            // For Full Website Set, use the entire message as base
+            baseMessage = userMessage;
+        }
 
-        // Build message parts with text and images
+        // Build message parts with text and images for user message display
         const messageParts: any[] = [];
         if (userMessage) {
             messageParts.push({ text: userMessage });
         }
-        uploadedImages.forEach((img) => {
+        const currentUploadedImages = [...uploadedImages];
+        currentUploadedImages.forEach((img) => {
             messageParts.push({ inlineData: img });
         });
 
         setInput("");
         setUploadedImages([]);
+        setIsLoading(true);
+        setGenerationProgress(null);
+
+        // Add user message
         setMessages((prev) => [
             ...prev,
             {
                 role: "user",
                 parts: messageParts,
-                images: uploadedImages.length > 0 ? uploadedImages : undefined
+                images: currentUploadedImages.length > 0 ? currentUploadedImages : undefined
             }
         ]);
-        setIsLoading(true);
 
         try {
             // Convert messages to Gemini format for history
-            // Filter out inlineData from model messages (not allowed by API) but preserve thought_signatures
             const history = messages.map(m => {
                 let parts = m.parts;
                 
-                // Ensure parts is an array
                 if (!Array.isArray(parts)) {
                     parts = [{ text: parts }];
                 }
                 
-                // For model messages, filter out inlineData parts (only keep text parts) but preserve thought_signatures
                 if (m.role === "model") {
                     parts = parts
                         .filter((part: any) => part.text && !part.inlineData)
                         .map((part: any) => {
-                            // Preserve all properties from the original part, especially thought_signature
                             const textPart: any = { ...part };
-                            // Ensure we only keep text-related properties, remove inlineData if present
                             delete textPart.inlineData;
                             return textPart;
                         });
-                    // If no text parts remain, create a placeholder text part
                     if (parts.length === 0) {
                         parts = [{ text: "Image generated successfully." }];
                     }
@@ -254,38 +364,70 @@ export default function NanobananaPage() {
                 };
             });
 
-            const response = await fetch("/api/nanobanana", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    message: userMessage,
-                    messageParts: messageParts.length > 0 ? messageParts : undefined,
-                    history,
-                    apiKey,
-                    aspectRatio,
-                }),
-            });
+            let allGeneratedImages: { mimeType: string; data: string; label?: string }[] = [];
 
-            const data = await response.json();
+            if (isFullWebsiteSet) {
+                // Generate 3 mockups: Landing, Blog, Product in the same style
+                const prompts = [
+                    { prompt: buildPrompt(baseMessage, "A modern landing page mockup for"), label: "Landing Page" },
+                    { prompt: buildPrompt(baseMessage, "A blog homepage design for"), label: "Blog" },
+                    { prompt: buildPrompt(baseMessage, "An e-commerce product page layout for"), label: "Product Page" },
+                ];
 
-            if (!response.ok) {
-                throw new Error(data.error || "Failed to generate image");
+                for (let i = 0; i < prompts.length; i++) {
+                    setGenerationProgress({ current: i + 1, total: 3, label: prompts[i].label });
+                    const images = await makeApiCall(prompts[i].prompt, history, prompts[i].label, currentUploadedImages);
+                    allGeneratedImages.push(...images);
+                }
+            } else if (generateMultiple) {
+                // Generate multiple variations
+                // If multiple styles selected, generate variations for each style
+                // Otherwise, generate multiple variations of the same prompt
+                const stylesToUse = selectedStyles.length > 0 ? selectedStyles : (customStyle.trim() ? [customStyle.trim()] : [null]);
+                const totalGenerations = stylesToUse.length * numVariations;
+                
+                let generationCount = 0;
+                for (const style of stylesToUse) {
+                    // Temporarily set style for this generation
+                    const originalSelected = [...selectedStyles];
+                    const originalCustom = customStyle;
+                    
+                    if (style) {
+                        if (STYLE_PRESETS.includes(style)) {
+                            setSelectedStyles([style]);
+                            setCustomStyle("");
+                        } else {
+                            setSelectedStyles([]);
+                            setCustomStyle(style);
+                        }
+                    }
+                    
+                    for (let i = 0; i < numVariations; i++) {
+                        generationCount++;
+                        setGenerationProgress({ current: generationCount, total: totalGenerations });
+                        const prompt = buildPrompt(baseMessage, presetPrefix);
+                        const images = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                        allGeneratedImages.push(...images);
+                    }
+                    
+                    // Restore original styles
+                    setSelectedStyles(originalSelected);
+                    setCustomStyle(originalCustom);
+                }
+            } else {
+                // Single generation
+                setGenerationProgress({ current: 1, total: 1 });
+                const prompt = buildPrompt(baseMessage, presetPrefix);
+                const images = await makeApiCall(prompt, history, undefined, currentUploadedImages);
+                allGeneratedImages = images;
             }
-
-            // Store the full parts array to preserve thought signatures
-            const responseParts = data.candidates?.[0]?.content?.parts || [];
-
-            // Extract images for display
-            const generatedImages = responseParts
-                .filter((part: any) => part.inlineData)
-                .map((part: any) => part.inlineData);
 
             setMessages((prev) => [
                 ...prev,
                 {
                     role: "model",
-                    parts: responseParts,
-                    images: generatedImages.length > 0 ? generatedImages : undefined
+                    parts: [{ text: isFullWebsiteSet ? "Full website set generated successfully." : "Image generated successfully." }],
+                    images: allGeneratedImages.length > 0 ? allGeneratedImages : undefined
                 }
             ]);
 
@@ -297,6 +439,7 @@ export default function NanobananaPage() {
             ]);
         } finally {
             setIsLoading(false);
+            setGenerationProgress(null);
         }
     };
 
@@ -371,52 +514,100 @@ export default function NanobananaPage() {
                                     </div>
 
                                     {/* Render Images if present */}
-                                    {msg.images && msg.images.map((img, imgIndex) => (
-                                        <div key={imgIndex} className="mt-2">
-                                            <div className="relative group">
-                                                <img
-                                                    src={`data:${img.mimeType};base64,${img.data}`}
-                                                    alt="Generated Art"
-                                                    className="max-w-full rounded-lg shadow-lg border border-white/10"
-                                                />
-                                                <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                    {msg.images && (
+                                        <div className={cn(
+                                            "mt-2",
+                                            msg.images.length > 1 && "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
+                                        )}>
+                                            {msg.images.map((img, imgIndex) => (
+                                                <div key={imgIndex} className="relative">
+                                                    {img.label && (
+                                                        <div className="text-xs text-muted-foreground mb-2 font-medium">
+                                                            {img.label}
+                                                        </div>
+                                                    )}
+                                                    <div className="relative group">
+                                                        <img
+                                                            src={`data:${img.mimeType};base64,${img.data}`}
+                                                            alt={img.label || "Generated Art"}
+                                                            className="max-w-full rounded-lg shadow-lg border border-white/10 w-full"
+                                                        />
+                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                                            <Button
+                                                                variant="secondary"
+                                                                size="sm"
+                                                                onClick={() => {
+                                                                    const link = document.createElement('a');
+                                                                    link.href = `data:${img.mimeType};base64,${img.data}`;
+                                                                    const filename = img.label 
+                                                                        ? `nanobanana-${img.label.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.jpg`
+                                                                        : `nanobanana-${Date.now()}.jpg`;
+                                                                    link.download = filename;
+                                                                    document.body.appendChild(link);
+                                                                    link.click();
+                                                                    document.body.removeChild(link);
+                                                                }}
+                                                            >
+                                                                <Download className="mr-2 h-4 w-4" /> Download
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {/* Download All button for multiple images */}
+                                            {msg.images.length > 1 && msg.role === "model" && index === messages.length - 1 && (
+                                                <div className="col-span-full mt-2">
                                                     <Button
-                                                        variant="secondary"
+                                                        variant="outline"
                                                         size="sm"
                                                         onClick={() => {
-                                                            const link = document.createElement('a');
-                                                            link.href = `data:${img.mimeType};base64,${img.data}`;
-                                                            link.download = `nanobanana-${Date.now()}.jpg`;
-                                                            document.body.appendChild(link);
-                                                            link.click();
-                                                            document.body.removeChild(link);
+                                                            msg.images?.forEach((img, idx) => {
+                                                                setTimeout(() => {
+                                                                    const link = document.createElement('a');
+                                                                    link.href = `data:${img.mimeType};base64,${img.data}`;
+                                                                    const filename = img.label 
+                                                                        ? `nanobanana-${img.label.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${idx}.jpg`
+                                                                        : `nanobanana-${Date.now()}-${idx}.jpg`;
+                                                                    link.download = filename;
+                                                                    document.body.appendChild(link);
+                                                                    link.click();
+                                                                    document.body.removeChild(link);
+                                                                }, idx * 100);
+                                                            });
                                                         }}
+                                                        className="w-full"
                                                     >
-                                                        <Download className="mr-2 h-4 w-4" /> Download
+                                                        <Download className="mr-2 h-4 w-4" /> Download All ({msg.images.length})
                                                     </Button>
                                                 </div>
-                                            </div>
+                                            )}
                                             {/* Show regenerate button only on last model message */}
-                                            {msg.role === "model" && index === messages.length - 1 && (
-                                                <Button
-                                                    variant="outline"
-                                                    size="sm"
-                                                    onClick={handleRegenerate}
-                                                    disabled={isLoading}
-                                                    className="mt-2 w-full"
-                                                >
-                                                    <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
-                                                </Button>
+                                            {msg.role === "model" && index === messages.length - 1 && msg.images.length === 1 && (
+                                                <div className="col-span-full">
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={handleRegenerate}
+                                                        disabled={isLoading}
+                                                        className="mt-2 w-full"
+                                                    >
+                                                        <RefreshCw className="mr-2 h-4 w-4" /> Regenerate
+                                                    </Button>
+                                                </div>
                                             )}
                                         </div>
-                                    ))}
+                                    )}
                                 </div>
                             </div>
                         ))}
                         {isLoading && (
                             <div className="flex items-center gap-2 text-muted-foreground ml-11">
                                 <Loader2 className="h-4 w-4 animate-spin" />
-                                <span className="text-xs">Generating image...</span>
+                                <span className="text-xs">
+                                    {generationProgress 
+                                        ? `Generating ${generationProgress.current}/${generationProgress.total}${generationProgress.label ? ` - ${generationProgress.label}` : ''}...`
+                                        : "Generating image..."}
+                                </span>
                             </div>
                         )}
                         <div ref={messagesEndRef} />
@@ -424,6 +615,69 @@ export default function NanobananaPage() {
 
                     {/* Input Area */}
                     <div className="p-4 bg-black/20 border-t border-white/5 flex flex-col gap-4">
+                        {/* Style Selector */}
+                        <div className="flex flex-col gap-2">
+                            <div className="text-xs text-muted-foreground font-medium">Style Presets</div>
+                            <div className="flex flex-wrap gap-2">
+                                {STYLE_PRESETS.map((style) => (
+                                    <Button
+                                        key={style}
+                                        type="button"
+                                        variant={selectedStyles.includes(style) ? "secondary" : "outline"}
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelectedStyles((prev) =>
+                                                prev.includes(style)
+                                                    ? prev.filter((s) => s !== style)
+                                                    : [...prev, style]
+                                            );
+                                        }}
+                                        className={cn(
+                                            "text-xs h-8",
+                                            selectedStyles.includes(style) && "bg-accent text-white border-accent"
+                                        )}
+                                    >
+                                        {selectedStyles.includes(style) && <Check className="mr-1 h-3 w-3" />}
+                                        {style}
+                                    </Button>
+                                ))}
+                            </div>
+                            <Input
+                                type="text"
+                                placeholder="Or enter custom style..."
+                                value={customStyle}
+                                onChange={(e) => setCustomStyle(e.target.value)}
+                                className="bg-secondary/50 border-none focus-visible:ring-1 focus-visible:ring-accent/50 text-xs h-8"
+                            />
+                        </div>
+
+                        {/* Generate Multiple Toggle */}
+                        <div className="flex items-center gap-2">
+                            <input
+                                type="checkbox"
+                                id="generate-multiple"
+                                checked={generateMultiple}
+                                onChange={(e) => setGenerateMultiple(e.target.checked)}
+                                className="w-4 h-4 rounded border-white/20 bg-secondary/50"
+                            />
+                            <label htmlFor="generate-multiple" className="text-xs text-muted-foreground cursor-pointer">
+                                Generate Multiple
+                            </label>
+                            {generateMultiple && (
+                                <div className="flex items-center gap-2 ml-4">
+                                    <span className="text-xs text-muted-foreground">Variations:</span>
+                                    <Input
+                                        type="number"
+                                        min="1"
+                                        max="5"
+                                        value={numVariations}
+                                        onChange={(e) => setNumVariations(Math.max(1, Math.min(5, parseInt(e.target.value) || 1)))}
+                                        className="w-16 h-8 bg-secondary/50 border-none focus-visible:ring-1 focus-visible:ring-accent/50 text-xs"
+                                    />
+                                </div>
+                            )}
+                        </div>
+
                         {/* Preset Buttons */}
                         <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                             {[
@@ -435,25 +689,49 @@ export default function NanobananaPage() {
                                 { label: "Social Media", prefix: "A social media post graphic for" },
                                 { label: "Logo", prefix: "A minimalist logo design for" },
                                 { label: "Product Shot", prefix: "A professional product photography shot of" },
+                                { label: "Landing Page", prefix: "A modern landing page mockup for" },
+                                { label: "Website Homepage", prefix: "A professional website homepage design for" },
+                                { label: "Product Page", prefix: "An e-commerce product page layout for" },
+                                { label: "About Page", prefix: "A company about page design for" },
+                                { label: "Portfolio", prefix: "A creative portfolio website layout for" },
+                                { label: "SaaS Landing", prefix: "A SaaS product landing page for" },
+                                { label: "Blog Layout", prefix: "A blog homepage design for" },
+                                { label: "Dashboard", prefix: "A web application dashboard mockup for" },
+                                { label: "Full Website Set", prefix: "Full Website Set", isSpecial: true },
                             ].map((preset) => (
                                 <Button
                                     key={preset.label}
                                     type="button"
-                                    variant="outline"
+                                    variant={currentPreset === preset.label ? "secondary" : "outline"}
                                     size="sm"
                                     onClick={() => {
-                                        const separator = ": ";
-                                        const currentInput = input;
-                                        // If input already has a preset prefix (contains separator), replace it
-                                        // Otherwise prepend
-                                        const content = currentInput.includes(separator)
-                                            ? currentInput.split(separator).slice(1).join(separator)
-                                            : currentInput;
+                                        if (preset.isSpecial) {
+                                            // Full Website Set - clear any preset prefix from input, just set the preset
+                                            const separator = ": ";
+                                            const currentInput = input;
+                                            const content = currentInput.includes(separator)
+                                                ? currentInput.split(separator).slice(1).join(separator)
+                                                : currentInput;
+                                            setInput(content);
+                                            setCurrentPreset(preset.label);
+                                        } else {
+                                            const separator = ": ";
+                                            const currentInput = input;
+                                            const content = currentInput.includes(separator)
+                                                ? currentInput.split(separator).slice(1).join(separator)
+                                                : currentInput;
 
-                                        setInput(`${preset.prefix}${separator}${content}`);
+                                            setInput(`${preset.prefix}${separator}${content}`);
+                                            setCurrentPreset(preset.label);
+                                        }
                                     }}
-                                    className="whitespace-nowrap bg-secondary/30 hover:bg-accent hover:text-white border-white/10 text-xs"
+                                    className={cn(
+                                        "whitespace-nowrap bg-secondary/30 hover:bg-accent hover:text-white border-white/10 text-xs",
+                                        currentPreset === preset.label && "bg-accent text-white border-accent",
+                                        preset.isSpecial && "bg-primary/20 border-primary/50"
+                                    )}
                                 >
+                                    {preset.isSpecial && <Layers className="mr-1 h-3 w-3" />}
                                     {preset.label}
                                 </Button>
                             ))}
