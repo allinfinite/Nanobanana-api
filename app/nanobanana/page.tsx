@@ -879,13 +879,14 @@ export default function NanobananaPage() {
                             ))}
                         </div>
 
-                        <div className="flex gap-2 justify-center mb-2">
+                        <div className="flex gap-2 justify-center mb-2 flex-wrap">
                             {[
                                 { ratio: "1:1", label: "Square", width: 24, height: 24 },
                                 { ratio: "16:9", label: "Wide", width: 32, height: 18 },
                                 { ratio: "9:16", label: "Tall", width: 18, height: 32 },
                                 { ratio: "4:3", label: "Standard", width: 28, height: 21 },
                                 { ratio: "3:4", label: "Portrait", width: 21, height: 28 },
+                                { ratio: "1536:150", label: "Video Footer", width: 34, height: 3 },
                             ].map((item) => (
                                 <Button
                                     key={item.ratio}
