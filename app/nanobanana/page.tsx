@@ -309,13 +309,24 @@ export default function NanobananaPage() {
         }
         const styleString = styleParts.length > 0 ? styleParts.join(", ") : undefined;
         
-        // Build final prompt
+        // Build final prompt with explicit dimension instructions
         let finalPrompt = prompt;
         if (styleString) {
             finalPrompt = `${finalPrompt} | Style: ${styleString}`;
         }
         if (aspectRatio) {
-            finalPrompt = `${finalPrompt} | Aspect Ratio: ${aspectRatio}`;
+            // Map aspect ratios to explicit dimension instructions
+            const dimensionMap: { [key: string]: string } = {
+                "1536:150": "CRITICAL: Generate a VERY WIDE, THIN horizontal banner image exactly 1536 pixels wide by 150 pixels tall. This is for a video footer/lower third. The image MUST be ultra-wide and very short in height.",
+                "16:9": "Generate a wide landscape image with 16:9 aspect ratio (1920x1080 or similar widescreen format).",
+                "9:16": "Generate a tall vertical image with 9:16 aspect ratio (1080x1920 or similar mobile/portrait format).",
+                "4:3": "Generate a standard landscape image with 4:3 aspect ratio (1024x768 or similar).",
+                "3:4": "Generate a portrait image with 3:4 aspect ratio (768x1024 or similar).",
+                "1:1": "Generate a square image with 1:1 aspect ratio (equal width and height)."
+            };
+            
+            const dimensionInstruction = dimensionMap[aspectRatio] || `Generate image with aspect ratio: ${aspectRatio}`;
+            finalPrompt = `${dimensionInstruction}\n\n${finalPrompt}`;
         }
         
         return finalPrompt;
@@ -674,7 +685,8 @@ export default function NanobananaPage() {
                                                             alt={img.label || "Generated Art"}
                                                             className="max-w-full rounded-lg shadow-lg border border-white/10 w-full"
                                                         />
-                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-4 rounded-lg">
+                                                        {/* Desktop hover overlay */}
+                                                        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity hidden md:flex items-center justify-center gap-4 rounded-lg">
                                                             <Button
                                                                 variant="secondary"
                                                                 size="sm"
@@ -693,6 +705,27 @@ export default function NanobananaPage() {
                                                                 <Download className="mr-2 h-4 w-4" /> Download
                                                             </Button>
                                                         </div>
+                                                    </div>
+                                                    {/* Mobile: Download button below image - always visible and easy to tap */}
+                                                    <div className="md:hidden mt-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                const link = document.createElement('a');
+                                                                link.href = `data:${img.mimeType};base64,${img.data}`;
+                                                                const filename = img.label 
+                                                                    ? `nanobanana-${img.label.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}.jpg`
+                                                                    : `nanobanana-${Date.now()}.jpg`;
+                                                                link.download = filename;
+                                                                document.body.appendChild(link);
+                                                                link.click();
+                                                                document.body.removeChild(link);
+                                                            }}
+                                                            className="w-full"
+                                                        >
+                                                            <Download className="mr-2 h-4 w-4" /> Download {img.label || "Image"}
+                                                        </Button>
                                                     </div>
                                                 </div>
                                             ))}
