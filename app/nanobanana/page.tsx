@@ -213,17 +213,42 @@ export default function NanobananaPage() {
                 };
             });
 
-            // Extract message parts from last user message
+            // Extract message parts from last user message (base message without prefix)
             let messageParts: any[] = [];
-            let userMessage = "";
+            let baseMessage = "";
             
             if (Array.isArray(lastUserMessage.parts)) {
                 messageParts = lastUserMessage.parts;
                 const textParts = messageParts.filter((part: any) => part.text);
-                userMessage = textParts.length > 0 ? textParts[0].text : "";
+                baseMessage = textParts.length > 0 ? textParts[0].text : "";
             } else {
-                userMessage = String(lastUserMessage.parts || "");
+                baseMessage = String(lastUserMessage.parts || "");
             }
+            
+            // Get preset prefix from currentPreset (same logic as handleSubmit)
+            const presetList = [
+                { label: "Flyer", prefix: "A professional flyer design for" },
+                { label: "Video Cover", prefix: "A YouTube video thumbnail for" },
+                { label: "Featured Image", prefix: "A blog post featured image for" },
+                { label: "Advertisement", prefix: "An eye-catching advertisement for" },
+                { label: "Infographic", prefix: "An educational infographic about" },
+                { label: "Social Media", prefix: "A social media post graphic for" },
+                { label: "Logo", prefix: "A minimalist logo design for" },
+                { label: "Product Shot", prefix: "A professional product photography shot of" },
+                { label: "Landing Page", prefix: "A modern landing page mockup for" },
+                { label: "Website Homepage", prefix: "A professional website homepage design for" },
+                { label: "Product Page", prefix: "An e-commerce product page layout for" },
+                { label: "About Page", prefix: "A company about page design for" },
+                { label: "Portfolio", prefix: "A creative portfolio website layout for" },
+                { label: "SaaS Landing", prefix: "A SaaS product landing page for" },
+                { label: "Blog Layout", prefix: "A blog homepage design for" },
+                { label: "Dashboard", prefix: "A web application dashboard mockup for" },
+            ];
+            
+            const selectedPreset = presetList.find(p => p.label === currentPreset);
+            const presetPrefix = selectedPreset?.prefix;
+            const separator = ": ";
+            const userMessage = presetPrefix ? `${presetPrefix}${separator}${baseMessage}` : baseMessage;
 
             const response = await fetch("/api/nanobanana", {
                 method: "POST",
@@ -285,16 +310,8 @@ export default function NanobananaPage() {
     const buildPrompt = (baseMessage: string, presetPrefix?: string, label?: string): string => {
         let prompt = baseMessage;
         
-        // Extract content after separator if preset is already applied
+        // Apply preset prefix if provided (input field no longer contains prefix)
         const separator = ": ";
-        if (prompt.includes(separator)) {
-            const parts = prompt.split(separator);
-            if (parts.length > 1) {
-                prompt = parts.slice(1).join(separator);
-            }
-        }
-        
-        // Apply preset prefix if provided
         if (presetPrefix) {
             prompt = `${presetPrefix}${separator}${prompt}`;
         }
@@ -389,22 +406,33 @@ export default function NanobananaPage() {
         if (!input.trim() && uploadedImages.length === 0) return;
 
         const userMessage = input.trim();
-        const separator = ": ";
         
         // Check if Full Website Set preset is selected
         const isFullWebsiteSet = currentPreset === "Full Website Set";
         
-        // Extract preset prefix if present (but not for Full Website Set)
-        let presetPrefix: string | undefined;
-        let baseMessage = userMessage;
-        if (!isFullWebsiteSet && userMessage.includes(separator)) {
-            const parts = userMessage.split(separator);
-            presetPrefix = parts[0];
-            baseMessage = parts.slice(1).join(separator);
-        } else if (isFullWebsiteSet) {
-            // For Full Website Set, use the entire message as base
-            baseMessage = userMessage;
-        }
+        // Get preset prefix from currentPreset (not from input field)
+        const presetList = [
+            { label: "Flyer", prefix: "A professional flyer design for" },
+            { label: "Video Cover", prefix: "A YouTube video thumbnail for" },
+            { label: "Featured Image", prefix: "A blog post featured image for" },
+            { label: "Advertisement", prefix: "An eye-catching advertisement for" },
+            { label: "Infographic", prefix: "An educational infographic about" },
+            { label: "Social Media", prefix: "A social media post graphic for" },
+            { label: "Logo", prefix: "A minimalist logo design for" },
+            { label: "Product Shot", prefix: "A professional product photography shot of" },
+            { label: "Landing Page", prefix: "A modern landing page mockup for" },
+            { label: "Website Homepage", prefix: "A professional website homepage design for" },
+            { label: "Product Page", prefix: "An e-commerce product page layout for" },
+            { label: "About Page", prefix: "A company about page design for" },
+            { label: "Portfolio", prefix: "A creative portfolio website layout for" },
+            { label: "SaaS Landing", prefix: "A SaaS product landing page for" },
+            { label: "Blog Layout", prefix: "A blog homepage design for" },
+            { label: "Dashboard", prefix: "A web application dashboard mockup for" },
+        ];
+        
+        const selectedPreset = presetList.find(p => p.label === currentPreset);
+        const presetPrefix = selectedPreset?.prefix;
+        const baseMessage = userMessage; // Input field only contains user's message, no prefix
 
         // Build message parts with text and images for user message display
         const messageParts: any[] = [];
@@ -880,23 +908,18 @@ export default function NanobananaPage() {
                                     variant={currentPreset === preset.label ? "secondary" : "outline"}
                                     size="sm"
                                     onClick={() => {
+                                        // Just set the preset, don't modify the input field
+                                        // The prefix will be added when sending to Gemini
                                         if (preset.isSpecial) {
-                                            // Full Website Set - clear any preset prefix from input, just set the preset
+                                            setCurrentPreset(preset.label);
+                                        } else {
+                                            // Clear any existing prefix from input if switching presets
                                             const separator = ": ";
                                             const currentInput = input;
                                             const content = currentInput.includes(separator)
                                                 ? currentInput.split(separator).slice(1).join(separator)
                                                 : currentInput;
                                             setInput(content);
-                                            setCurrentPreset(preset.label);
-                                        } else {
-                                            const separator = ": ";
-                                            const currentInput = input;
-                                            const content = currentInput.includes(separator)
-                                                ? currentInput.split(separator).slice(1).join(separator)
-                                                : currentInput;
-
-                                            setInput(`${preset.prefix}${separator}${content}`);
                                             setCurrentPreset(preset.label);
                                         }
                                     }}
@@ -999,7 +1022,11 @@ export default function NanobananaPage() {
                             <Input
                                 value={input}
                                 onChange={(e) => setInput(e.target.value)}
-                                placeholder="Describe the image you want to generate or edit..."
+                                placeholder={
+                                    currentPreset && currentPreset !== "Full Website Set"
+                                        ? `Describe ${currentPreset.toLowerCase()}...`
+                                        : "Describe the image you want to generate or edit..."
+                                }
                                 className="flex-1 bg-secondary/50 border-none focus-visible:ring-1 focus-visible:ring-accent/50"
                                 disabled={isLoading}
                             />
